@@ -1,0 +1,99 @@
+{
+  "dashboard": {
+    "title": "Meter Drill-Down",
+    "tags": ["smartmeter", "meter-detail"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "templating": {
+      "list": [
+        {
+          "name": "meter_id",
+          "type": "query",
+          "datasource": "TimescaleDB",
+          "query": "SELECT DISTINCT meter_id FROM validated_readings ORDER BY meter_id",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "options": []
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Consumption Time-Series",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+        "targets": [
+          {
+            "rawSql": "SELECT time, consumption_kwh FROM validated_readings WHERE $__timeFilter(time) AND ($meter_id = '$__all' OR meter_id = '$meter_id') ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "kwh"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Missing Intervals",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT missing_from as time, gap_minutes as value FROM gap_alerts WHERE $__timeFilter(time) AND ($meter_id = '$__all' OR meter_id = '$meter_id') ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "minutes"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Late Event Markers",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT event_timestamp as time, delay_seconds as value FROM late_events WHERE $__timeFilter(time) AND ($meter_id = '$__all' OR meter_id = '$meter_id') ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Meter Statistics",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+        "targets": [
+          {
+            "rawSql": "SELECT meter_id, COUNT(*) as total_readings, COUNT(*) FILTER (WHERE status = 'LATE') as late_readings, MAX(time) as last_reading FROM validated_readings WHERE $__timeFilter(time) AND ($meter_id = '$__all' OR meter_id = '$meter_id') GROUP BY meter_id",
+            "format": "table",
+            "datasource": "TimescaleDB"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    }
+  }
+}
+

@@ -1,0 +1,82 @@
+{
+  "dashboard": {
+    "title": "System & Stream Health",
+    "tags": ["system", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Processing Metrics",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "rawSql": "SELECT time, value FROM metrics WHERE metric_type = 'event_processed' AND $__timeFilter(time) GROUP BY time, value ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "rawSql": "SELECT time_bucket('1 minute', time) as time, COUNT(*) as errors FROM metrics WHERE metric_type IN ('processing_error', 'invalid_event') AND $__timeFilter(time) GROUP BY time ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Gap Detection Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT time_bucket('1 minute', time) as time, COUNT(*) as gaps FROM metrics WHERE metric_type LIKE 'gap_%' AND $__timeFilter(time) GROUP BY time ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Late Event Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT time_bucket('1 minute', time) as time, COUNT(*) as late_events FROM metrics WHERE metric_type = 'too_late_event' AND $__timeFilter(time) GROUP BY time ORDER BY time",
+            "format": "time_series",
+            "datasource": "TimescaleDB"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Metric Types Summary",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+        "targets": [
+          {
+            "rawSql": "SELECT metric_type, COUNT(*) as count, SUM(value) as total_value, AVG(value) as avg_value FROM metrics WHERE $__timeFilter(time) GROUP BY metric_type ORDER BY count DESC",
+            "format": "table",
+            "datasource": "TimescaleDB"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    }
+  }
+}
+

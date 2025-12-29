@@ -1,0 +1,19 @@
+# Ignore files when building Docker images
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.git/
+.gitignore
+*.md
+!README.md
+data/
+*.log
+

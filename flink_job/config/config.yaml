@@ -1,0 +1,44 @@
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topics:
+    raw: "smartmeter_raw"
+    validated: "smartmeter_validated"
+    gap_alerts: "smartmeter_gap_alerts"
+    late_events: "smartmeter_late_events"
+    metrics: "smartmeter_metrics"
+  consumer_group: "flink-smartmeter-group"
+  producer_config:
+    acks: "all"
+    retries: 3
+    max_in_flight_requests_per_connection: 1
+    enable_idempotence: true
+
+flink:
+  parallelism: 2
+  checkpoint_interval_ms: 60000
+  watermark_interval_ms: 200
+  allowed_lateness_seconds: 3600  # 1 hour
+  grace_period_seconds: 900  # 15 minutes after expected time
+  expected_interval_minutes: 30  # Default interval between readings
+  state_ttl_days: 7  # Clean up inactive meters after 7 days
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "gridwatch"
+  user: "gridwatch"
+  password: "gridwatch"
+  pool_size: 10
+
+producer:
+  csv_file: "data/sample_data.csv"
+  replay_rate: 1.0  # 1.0 = real-time, 2.0 = 2x speed, 0.5 = half speed
+  delay_probability: 0.1  # 10% chance of adding delay
+  max_delay_seconds: 300  # Max 5 minutes delay
+  gap_probability: 0.05  # 5% chance of skipping a record to simulate gap
+
+grafana:
+  url: "http://localhost:3000"
+  admin_user: "admin"
+  admin_password: "admin"
+

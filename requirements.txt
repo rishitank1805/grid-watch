@@ -1,0 +1,31 @@
+# Kafka
+# Note: kafka-python 2.0.2 has issues with Python 3.13, using 2.3.0+
+kafka-python>=2.3.0
+python-snappy>=0.7.0  # Snappy compression support for Kafka
+# Alternative: confluent-kafka requires librdkafka system library
+# Install with: brew install librdkafka (macOS) or apt-get install librdkafka-dev (Linux)
+# confluent-kafka>=2.3.0
+
+# Flink
+# Note: PyFlink is included with apache-flink-libraries
+# For local development, these may not be needed as Flink runs in Docker
+# apache-flink==1.18.0
+# apache-flink-libraries==1.18.0
+
+# Database
+# Note: psycopg2-binary may have issues with Python 3.13, use psycopg (v3) as alternative
+# psycopg2-binary==2.9.9
+psycopg[binary,pool]>=3.1.0
+sqlalchemy==2.0.23
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Configuration
+pyyaml==6.0.1
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
