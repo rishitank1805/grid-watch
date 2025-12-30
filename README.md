@@ -1,272 +1,169 @@
-# Real-Time Smart Meter Data Quality Monitoring
+# Smart Meter Data Quality Monitoring
 
-A production-style real-time streaming system that ingests smart electricity meter readings, validates time-series integrity, detects missing time steps, late arrivals, and irregular sampling, and exposes live data quality and system metrics through Grafana dashboards.
+Real-time streaming pipeline for monitoring smart electricity meter data. Detects gaps, late arrivals, and data quality issues as they happen.
+
+## What This Does
+
+Takes smart meter readings from CSV files, streams them through Kafka, processes with Flink to detect problems (missing data, late events), and stores everything in TimescaleDB. Grafana dashboards show what's happening in real-time.
 
 ## Architecture
 
 ```
-CSV Replay Producer → Kafka → Apache Flink → Kafka Topics → Database Consumer → TimescaleDB → Grafana
+CSV → Kafka → Flink → Kafka (processed) → TimescaleDB → Grafana
 ```
 
-### Components
+- **Producer**: Reads CSV and sends to Kafka (simulates live stream)
+- **Kafka**: Message broker with 5 topics (raw, validated, gaps, late events, metrics)
+- **Flink**: Does the heavy lifting - validates, detects gaps, handles late events
+- **TimescaleDB**: Stores everything for querying later
+- **Grafana**: Pretty dashboards to see what's going on
 
-1. **CSV Replay Producer**: Simulates live smart meter data stream with configurable delays and gaps
-2. **Kafka**: Message broker with topics for raw data, validated readings, gap alerts, late events, and metrics
-3. **Apache Flink**: Event-time driven processing with stateful gap detection and late event handling
-4. **TimescaleDB**: Time-series database for storing validated data, alerts, and metrics
-5. **Grafana**: Real-time dashboards for data quality monitoring
+## Getting Started
 
-## Features
-
-- ✅ **Event-Time Semantics**: Uses meter timestamps as event time with bounded out-of-orderness watermarks
-- ✅ **Stateful Processing**: Maintains per-meter state for gap detection and late event tracking
-- ✅ **Gap Detection**: Uses event-time timers to detect missing intervals
-- ✅ **Late Event Handling**: Classifies events as on-time, late, or too-late
-- ✅ **Exactly-Once Processing**: Enabled with periodic checkpointing
-- ✅ **Real-Time Dashboards**: Three Grafana dashboards for monitoring
-- ✅ **Modular Python Code**: Clean, maintainable, and well-organized
-
-## Prerequisites
+### Prerequisites
 
 - Docker and Docker Compose
-- Python 3.8+
-- Access to a smart meter dataset (see Data Sources below)
+- Python 3.8+ (3.13 works too)
+- Some smart meter data (or we'll generate sample data)
 
-**Note**: The Flink job uses PyFlink which requires Java 11+. The Docker image includes Java, but if running Flink locally, ensure Java is installed.
+### Setup
 
-## Quick Start
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### 1. Clone and Setup
+2. **Get some data:**
 
-```bash
-cd grid-watch
-pip install -r requirements.txt
-```
+   Either generate sample data:
+   ```bash
+   python scripts/create_sample_data.py --meters 10 --days 7
+   ```
 
-### 2. Prepare Data
+   Or use your own CSV. Put it in `data/sample_data.csv` with columns:
+   - `meter_id` (or `meterId`, `id` - we'll figure it out)
+   - `timestamp` (ISO format or `YYYY-MM-DD HH:MM:SS`)
+   - `consumption_kwh` (or `consumption`, `kwh`)
 
-You can either:
+   Good datasets:
+   - [UK Smart Meter Data on Kaggle](https://www.kaggle.com/datasets/jeanmidev/smart-meters-in-london)
+   - [UCI Electricity Load Diagrams](https://archive.ics.uci.edu/ml/datasets/ElectricityLoadDiagrams20112014)
 
-**Option A: Generate Sample Data**
-```bash
-python scripts/create_sample_data.py --meters 10 --days 7
-```
+3. **Start everything:**
+   ```bash
+   docker-compose up -d
+   ```
 
-**Option B: Use Real Data**
+   Wait about 30 seconds for services to start, then create Kafka topics:
+   ```bash
+   docker-compose exec kafka kafka-topics --create --topic smartmeter_raw --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
+   docker-compose exec kafka kafka-topics --create --topic smartmeter_validated --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
+   docker-compose exec kafka kafka-topics --create --topic smartmeter_gap_alerts --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
+   docker-compose exec kafka kafka-topics --create --topic smartmeter_late_events --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
+   docker-compose exec kafka kafka-topics --create --topic smartmeter_metrics --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
+   ```
 
-Download a smart meter dataset and place it in `data/sample_data.csv`. The CSV should have columns:
-- `meter_id` (or `meterId`, `id`)
-- `timestamp` (ISO format or `YYYY-MM-DD HH:MM:SS`)
-- `consumption_kwh` (or `consumption`, `kwh`)
+4. **Send data to Kafka:**
+   ```bash
+   python -m producer.csv_replay
+   ```
 
-Example datasets:
-- [UK Smart Meter Energy Consumption (Kaggle)](https://www.kaggle.com/datasets/jeanmidev/smart-meters-in-london)
-- [UCI Electricity Load Diagrams](https://archive.ics.uci.edu/ml/datasets/ElectricityLoadDiagrams20112014)
+5. **Start the Flink job:**
+   ```bash
+   ./scripts/submit_flink_job.sh
+   ```
 
-### 3. Start Services
+6. **Write to database (separate terminal):**
+   ```bash
+   python -m consumer.kafka_to_db
+   ```
 
-**Quick Setup (Recommended)**
-```bash
-./scripts/setup.sh
-```
+7. **Check it out:**
+   - Grafana: http://localhost:3000 (admin/admin)
+   - Flink UI: http://localhost:8081
+   - Kafka UI: http://localhost:8080
 
-**Manual Setup**
+## How It Works
 
-```bash
-# Start services
-docker-compose up -d
+### Event-Time Processing
 
-# Wait for services to be healthy (about 30-60 seconds)
-sleep 30
+Uses the actual meter timestamps, not when we process them. Handles out-of-order events with watermarks. Events can arrive up to an hour late and still get processed.
 
-# Create Kafka topics
-docker-compose exec kafka kafka-topics --create --topic smartmeter_raw --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
-docker-compose exec kafka kafka-topics --create --topic smartmeter_validated --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
-docker-compose exec kafka kafka-topics --create --topic smartmeter_gap_alerts --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
-docker-compose exec kafka kafka-topics --create --topic smartmeter_late_events --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
-docker-compose exec kafka kafka-topics --create --topic smartmeter_metrics --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1 --if-not-exists
-```
+### Gap Detection
 
-This starts:
-- Zookeeper (port 2181)
-- Kafka (port 9092)
-- TimescaleDB (port 5432)
-- Grafana (port 3000)
-- Flink JobManager (port 8081)
-- Flink TaskManager
+If a meter is supposed to send data every 30 minutes and we don't see it, we fire a timer after a grace period (15 min default). Detects cascading gaps too.
 
-### 5. Start Data Replay
+### Late Events
 
-```bash
-python -m producer.csv_replay
-```
+Events get classified as:
+- **ON_TIME**: Arrived when expected
+- **LATE**: Arrived late but still within the allowed window
+- **TOO_LATE**: Missed the window, goes to a separate topic
 
-This will replay your CSV data to Kafka with configurable delays and gaps.
+### State Management
 
-### 6. Submit Flink Job
-
-```bash
-# Copy job files to Flink
-docker cp flink_job flink-jobmanager:/opt/flink/usrlib/
-docker cp config flink-jobmanager:/opt/flink/usrlib/
-
-# Submit job
-docker-compose exec flink-jobmanager flink run -py /opt/flink/usrlib/flink_job/main.py
-```
-
-### 7. Start Database Consumer
-
-In a separate terminal:
-
-```bash
-python -m consumer.kafka_to_db
-```
-
-This consumes from Kafka topics and writes to TimescaleDB.
-
-### 8. Access Grafana
-
-Open http://localhost:3000 and login with:
-- Username: `admin`
-- Password: `admin`
-
-The dashboards should be automatically provisioned:
-- **Data Quality Overview**: Active meters, events per minute, missing intervals, late events
-- **Meter Drill-Down**: Per-meter consumption, gaps, and late events
-- **System & Stream Health**: Processing metrics, error rates, gap detection rates
+Keeps track of each meter separately. Remembers when we last saw it, when we expect the next reading, and the interval between readings. Cleans up after 7 days of inactivity.
 
 ## Configuration
 
-Edit `config/config.yaml` to customize:
-
-- **Kafka**: Bootstrap servers, topics, consumer groups
-- **Flink**: Parallelism, checkpoint interval, allowed lateness, grace period
-- **Database**: Connection details
-- **Producer**: Replay rate, delay probability, gap probability
-- **Grafana**: URL and credentials
+Edit `config/config.yaml` to tweak:
+- Kafka connection details
+- Flink parallelism and checkpoint settings
+- Database connection
+- How the producer simulates delays/gaps
+- Grafana credentials
 
 ## Project Structure
 
 ```
 grid-watch/
-├── config/
-│   └── config.yaml              # Configuration file
-├── producer/
-│   ├── csv_replay.py            # CSV replay producer
-│   └── kafka_producer.py        # Kafka producer wrapper
-├── flink_job/
-│   ├── main.py                  # Main Flink job
-│   ├── processors/
-│   │   ├── validator.py         # Event validation
-│   │   ├── gap_detector.py      # Gap detection logic
-│   │   └── late_event_handler.py # Late event classification
-│   └── utils/
-│       ├── schemas.py           # Event schemas
-│       └── state_management.py  # State management
-├── consumer/
-│   └── kafka_to_db.py           # Kafka to database consumer
-├── database/
-│   ├── schema.sql               # TimescaleDB schema
-│   └── connection.py            # Database connection
-├── grafana/
-│   ├── dashboards/              # Grafana dashboard JSON files
-│   └── provisioning/            # Grafana provisioning configs
-├── docker-compose.yml           # Docker Compose configuration
-├── requirements.txt             # Python dependencies
-└── README.md                    # This file
+├── config/              # Config files
+├── producer/            # CSV replay and Kafka producer
+├── flink_job/          # The main processing logic
+│   ├── processors/     # Validator, gap detector, late event handler
+│   └── utils/          # Schemas and state management
+├── consumer/           # Kafka to database writer
+├── database/           # TimescaleDB schema and connection
+├── grafana/            # Dashboard configs
+└── scripts/            # Helper scripts
 ```
-
-## Key Design Decisions
-
-### Event-Time Processing
-
-- Uses meter timestamps as event time (not processing time)
-- Bounded out-of-orderness watermarks (10 seconds)
-- Allowed lateness window (1 hour by default)
-- Grace period for gap detection (15 minutes)
-
-### Gap Detection
-
-- Event-time timers fire when expected events don't arrive
-- Timers are registered at `expected_time + grace_period`
-- Cascading gaps are handled by updating expected next time
-- State is maintained per meter using Flink keyed state
-
-### Late Event Handling
-
-- Events are classified as: ON_TIME, LATE, TOO_LATE
-- Too-late events are routed to a separate topic
-- Late events within allowed lateness are processed but marked
-
-### State Management
-
-- Keyed state per meter_id
-- TTL for inactive meters (7 days default)
-- State includes: last_seen, expected_next, interval, counters
 
 ## Monitoring
 
-### Flink Web UI
+### Flink UI (http://localhost:8081)
 
-Access at http://localhost:8081 to monitor:
-- Job status and metrics
-- Checkpoint status
-- Operator throughput
-- Watermark delay
+See your job running, check throughput, monitor checkpoints. Pretty useful when things go wrong.
 
 ### Grafana Dashboards
 
-Three dashboards provide comprehensive monitoring:
-1. **Data Quality Overview**: System-wide metrics
-2. **Meter Drill-Down**: Per-meter analysis
-3. **System Health**: Stream processing metrics
+Three dashboards:
+1. **Data Quality Overview** - Big picture stuff
+2. **Meter Drill-Down** - Individual meter details
+3. **System Health** - Processing metrics
 
-## Troubleshooting
+## Common Issues
 
-### Flink Job Not Starting
+**Flink job won't start:**
+- Check logs: `docker-compose logs flink-jobmanager`
+- Make sure Kafka is reachable from Flink
+- Verify the Kafka connector JAR is in `libs/` (see SETUP_KAFKA_CONNECTOR.md)
 
-- Check Flink logs: `docker-compose logs flink-jobmanager`
-- Ensure Kafka is accessible from Flink containers
-- Verify Python dependencies are installed in Flink image
+**No data in Grafana:**
+- Is the database consumer running?
+- Check Kafka has data: `docker-compose exec kafka kafka-console-consumer --topic smartmeter_validated --bootstrap-server localhost:9092 --from-beginning`
+- Verify Grafana can connect to TimescaleDB
 
-### No Data in Grafana
-
-- Verify database consumer is running
-- Check Kafka topics have data: `docker-compose exec kafka kafka-console-consumer --topic smartmeter_validated --bootstrap-server localhost:9092`
-- Verify database connection in Grafana datasource
-
-### Gaps Not Detected
-
-- Check grace period configuration
-- Verify event-time timers are working (check Flink metrics)
-- Ensure expected interval matches actual data interval
+**Gaps not being detected:**
+- Check the grace period in config
+- Make sure the expected interval matches your data
+- Look at Flink metrics to see if timers are firing
 
 ## Development
 
-### Running Tests
+Want to add a new processor? Drop it in `flink_job/processors/` and wire it up in `main.py`.
 
-```bash
-# Add tests as needed
-pytest tests/
-```
-
-### Adding New Processors
-
-1. Create processor in `flink_job/processors/`
-2. Import and use in `flink_job/main.py`
-3. Update schemas if needed
-
-### Modifying Dashboards
-
-1. Edit JSON files in `grafana/dashboards/`
-2. Or use Grafana UI (changes persist in volume)
-3. Export and commit dashboard JSON
+Dashboard changes? Edit the JSON files in `grafana/dashboards/` or use the Grafana UI (changes save to the volume).
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please open an issue or submit a pull request.
-

@@ -1,79 +1,75 @@
-# Quick Start Guide
+# Quick Start
 
-## 1. Generate Sample Data
+Get this running in a few minutes.
+
+## 1. Generate Some Data
 
 ```bash
 python scripts/create_sample_data.py
 ```
 
-## 2. Setup and Start Services
+Or use your own CSV file in `data/sample_data.csv`.
+
+## 2. Start Everything
 
 ```bash
 ./scripts/setup.sh
 ```
 
-Or manually:
+Or do it manually:
 ```bash
 docker-compose up -d
 # Wait 30 seconds, then create topics (see README)
 ```
 
-## 3. Start Data Replay
+## 3. Send Data to Kafka
 
 ```bash
 python -m producer.csv_replay
 ```
 
-## 4. Submit Flink Job
+This reads your CSV and streams it to Kafka.
+
+## 4. Run the Flink Job
 
 ```bash
-# Copy files to Flink container
-docker cp flink_job flink-jobmanager:/opt/flink/usrlib/
-docker cp config flink-jobmanager:/opt/flink/usrlib/
-
-# Submit job
-docker-compose exec flink-jobmanager flink run -py /opt/flink/usrlib/flink_job/main.py
+./scripts/submit_flink_job.sh
 ```
 
-## 5. Start Database Consumer
+This processes the stream and writes results back to Kafka.
 
-In a new terminal:
+## 5. Save to Database
+
+In another terminal:
 ```bash
 python -m consumer.kafka_to_db
 ```
 
-## 6. View Dashboards
+This reads from Kafka and writes to TimescaleDB.
 
-Open http://localhost:3000
-- Username: `admin`
-- Password: `admin`
+## 6. Check It Out
 
-## Troubleshooting
+Open http://localhost:3000 (admin/admin) to see the dashboards.
 
-### Check Service Status
+## When Things Break
+
+**Services not running?**
 ```bash
 docker-compose ps
 ```
 
-### View Logs
+**Need logs?**
 ```bash
 docker-compose logs -f kafka
 docker-compose logs -f flink-jobmanager
-docker-compose logs -f timescaledb
 ```
 
-### Check Kafka Topics
-```bash
-docker-compose exec kafka kafka-topics --list --bootstrap-server localhost:9092
-```
-
-### Check Data in Kafka
+**Check if Kafka has data:**
 ```bash
 docker-compose exec kafka kafka-console-consumer --topic smartmeter_validated --bootstrap-server localhost:9092 --from-beginning
 ```
 
-### Check Database
+**Check database:**
 ```bash
 docker-compose exec timescaledb psql -U gridwatch -d gridwatch -c "SELECT COUNT(*) FROM validated_readings;"
 ```
-

@@ -1,78 +1,56 @@
-# Flink Job Submission Guide
+# Setting Up Flink
 
-## Understanding the Error
+If you're getting errors about PyFlink not being found, here's what's going on.
 
-The error you saw:
-```
-java.nio.file.NoSuchFileException: /tmp/pyflink/.../main.py
-```
+## The Problem
 
-This happens because:
-1. Flink tries to copy Python files to a temporary directory for execution
-2. The standard `flink:1.18-scala_2.12` image may not have PyFlink properly configured
-3. The file path resolution might be incorrect
+The standard Flink Docker image doesn't include PyFlink. We built a custom image that does.
 
-## Solution
+## What We Did
 
-I've created a custom Dockerfile (`Dockerfile.flink`) that extends the standard Flink image with PyFlink:
-- Base image: `flink:1.18-scala_2.12`
-- Adds: Python 3, pip, and PyFlink 1.18.0
+Created `Dockerfile.flink` that:
+- Starts with the standard Flink image
+- Installs Python 3 and pip
+- Installs PyFlink 1.18.0
+- Sets up JDK headers (needed for PyFlink's native bits)
+- Copies the Kafka connector JARs
 
-The docker-compose.yml now builds this custom image instead of using a pre-built one.
+The docker-compose.yml builds this image automatically.
 
-## Steps to Fix
+## Getting It Running
 
-1. **Build the custom Flink image** (this will take a few minutes the first time):
+1. **Build the image** (first time only, takes a few minutes):
    ```bash
    docker-compose build flink-jobmanager flink-taskmanager
    ```
 
-2. **Start the Flink containers**:
+2. **Start Flink**:
    ```bash
    docker-compose up -d flink-jobmanager flink-taskmanager
    ```
 
-2. **Wait for containers to be ready** (about 30 seconds)
-
-3. **Submit the job**:
+3. **Submit your job**:
    ```bash
    ./scripts/submit_flink_job.sh
    ```
 
-   Or manually:
-   ```bash
-   docker-compose exec flink-jobmanager flink run -py /opt/flink/usrlib/flink_job/main.py
-   ```
+## Verify PyFlink Works
 
-## Alternative: If PyFlink Image Doesn't Work
-
-If the PyFlink image has issues, you can:
-
-1. **Use the standard image and install PyFlink**:
-   ```bash
-   docker-compose exec flink-jobmanager pip install apache-flink
-   ```
-
-2. **Or create a custom Dockerfile** that extends the Flink image with PyFlink
-
-## Verifying PyFlink is Available
-
-Check if PyFlink is installed:
 ```bash
-docker-compose exec flink-jobmanager python3 -c "import pyflink; print(pyflink.__version__)"
+docker-compose exec flink-jobmanager python3 -c "import pyflink; print('PyFlink is installed')"
 ```
 
-## Troubleshooting
+## Common Issues
 
-- **If job submission fails**: Check Flink logs:
-  ```bash
-  docker-compose logs flink-jobmanager
-  ```
+**Job won't submit:**
+- Check logs: `docker-compose logs flink-jobmanager`
+- Make sure volumes are mounted: `docker-compose exec flink-jobmanager ls -la /opt/flink/usrlib/flink_job`
 
-- **If Python modules not found**: Ensure the volume mount is correct:
-  ```bash
-  docker-compose exec flink-jobmanager ls -la /opt/flink/usrlib/flink_job
-  ```
+**Kafka connection fails:**
+- Flink containers use `kafka:29092` (internal port)
+- Your producer uses `localhost:9092` (external port)
+- Check `config/config.flink.yaml` has the right bootstrap servers
 
-- **If Kafka connection fails**: Update `config/config.yaml` to use `kafka:9092` instead of `localhost:9092` (container networking)
-
+**Missing Kafka connector:**
+- See SETUP_KAFKA_CONNECTOR.md
+- JARs should be in `libs/` directory

@@ -1,57 +1,39 @@
-# Setting Up Flink Kafka Connector
+# Setting Up the Kafka Connector for Flink
 
-The Flink Kafka connector JAR is required for the PyFlink job to work. Since the standard Maven URLs are not working, please download it manually:
+Flink needs a JAR file to talk to Kafka. The standard Maven URLs don't always work, so here's how to get it.
 
-## Option 1: Download via Maven (Recommended)
+## Download the JAR
 
-Run this command to download the connector JAR:
+The easiest way is to download it directly:
 
 ```bash
-# For Flink 1.18.1 (matches your Flink version)
+# This one usually works
 curl -L -o libs/flink-connector-kafka-1.18.0.jar \
   "https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka_2.12/1.18.1/flink-connector-kafka_2.12-1.18.1.jar"
 
-# Or try the universal connector
-curl -L -o libs/flink-connector-kafka-1.18.0.jar \
-  "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.18.1/flink-sql-connector-kafka-1.18.1.jar"
+# Also need the Kafka client library
+curl -L -o libs/kafka-clients.jar \
+  "https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.0/kafka-clients-3.5.0.jar"
 ```
 
-Then copy it to the Flink container:
+The Dockerfile will automatically copy these from `libs/` when you build. If the JARs are there, they'll be included in the image.
+
+## Manual Copy (If Needed)
+
+If you downloaded them after building:
 
 ```bash
 docker cp libs/flink-connector-kafka-1.18.0.jar $(docker-compose ps -q flink-jobmanager):/opt/flink/lib/
+docker cp libs/kafka-clients.jar $(docker-compose ps -q flink-jobmanager):/opt/flink/lib/
 docker cp libs/flink-connector-kafka-1.18.0.jar $(docker-compose ps -q flink-taskmanager):/opt/flink/lib/
+docker cp libs/kafka-clients.jar $(docker-compose ps -q flink-taskmanager):/opt/flink/lib/
 ```
 
-## Option 2: Use Dockerfile
-
-Add this to your Dockerfile.flink before the `USER flink` line:
-
-```dockerfile
-# Copy Kafka connector JAR if available
-COPY libs/flink-connector-kafka-1.18.0.jar /opt/flink/lib/ 2>/dev/null || echo "JAR not found, will need to be added manually"
-```
-
-Then rebuild:
-
-```bash
-docker-compose build flink-jobmanager flink-taskmanager
-```
-
-## Option 3: Manual Download
-
-1. Visit https://mvnrepository.com/artifact/org.apache.flink/flink-connector-kafka_2.12
-2. Download version 1.18.1 or 1.18.0
-3. Place it in `libs/flink-connector-kafka-1.18.0.jar`
-4. Copy to containers as shown in Option 1
-
-## Verification
-
-After adding the JAR, verify it exists:
+## Verify It's There
 
 ```bash
 docker-compose exec flink-jobmanager ls -lh /opt/flink/lib/flink-connector-kafka*
+docker-compose exec flink-jobmanager ls -lh /opt/flink/lib/kafka-clients*
 ```
 
-You should see the JAR file listed.
-
+You should see both JARs listed.
